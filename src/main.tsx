@@ -1,7 +1,7 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
@@ -10,7 +10,7 @@ if ('serviceWorker' in navigator) {
       scope: '/tamaguchigarden/'
     }).then(registration => {
       console.log('SW registered:', registration);
-      
+
       // Check for updates periodically
       setInterval(() => {
         registration.update();

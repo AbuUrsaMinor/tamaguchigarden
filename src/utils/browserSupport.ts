@@ -3,7 +3,7 @@
  * @returns true if OffscreenCanvas is supported
  */
 export function isOffscreenCanvasSupported(): boolean {
-  return typeof window !== 'undefined' && 'OffscreenCanvas' in window;
+    return typeof window !== 'undefined' && 'OffscreenCanvas' in window;
 }
 
 /**
@@ -11,10 +11,10 @@ export function isOffscreenCanvasSupported(): boolean {
  * @returns true if structured clone is supported
  */
 export function isStructuredCloneSupported(): boolean {
-  try {
-    window.structuredClone({ test: true });
-    return true;
-  } catch (e) {
-    return false;
-  }
+    try {
+        window.structuredClone({ test: true });
+        return true;
+    } catch (e) {
+        return false;
+    }
 }

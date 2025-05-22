@@ -1,6 +1,6 @@
 import './App.css'
-import { Garden } from './components/Garden'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { Garden } from './components/Garden'
 
 function App() {
   return (
@@ -10,11 +10,11 @@ function App() {
           <h1 className="text-2xl font-bold">Tamaguchi Garden</h1>
           <p className="text-sm opacity-75">Plants grow while you focus</p>
         </header>
-        
+
         <main className="flex-grow">
           <Garden />
         </main>
-        
+
         <footer className="bg-gray-900 text-white text-xs p-2 text-center">
           <p>Enable Focus/Do Not Disturb mode to help your plants grow</p>
         </footer>
