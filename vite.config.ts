@@ -13,16 +13,20 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      strategies: 'generateSW',
       registerType: 'autoUpdate',
+      filename: 'sw.js',
+      manifestFilename: 'manifest.webmanifest',
       includeAssets: ['vite.svg'],
       manifest: {
         name: 'Tamaguchi Garden',
         short_name: 'TamaGarden',
-        description: 'A virtual garden with Tamaguchi-like creatures',
+        description: 'Virtual garden that grows while you focus',
         theme_color: '#242424',
         background_color: '#242424',
         display: 'standalone',
-        start_url: '/tamaguchigarden/',
+        start_url: './index.html',
+        scope: './',
         icons: [
           {
             src: 'vite.svg',
@@ -36,6 +40,30 @@ export default defineConfig({
           },
         ],
       },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm}'],
+        cleanupOutdatedCaches: true,
+        sourcemap: true,
+        navigateFallback: 'index.html',
+      },
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
     }),
   ],
+  server: {
+    headers: {
+      'Service-Worker-Allowed': '/',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+  },
+  preview: {
+    headers: {
+      'Service-Worker-Allowed': '/',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+  },
 })

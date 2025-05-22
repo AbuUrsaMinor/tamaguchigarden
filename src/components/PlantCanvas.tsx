@@ -16,45 +16,72 @@ export function PlantCanvas({ plants, className }: PlantCanvasProps) {
     const workerRef = useRef<Worker | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const isInView = useInView(canvasRef);
-    const hasTransferred = useRef(false);
+    const hasTransferred = useRef(false);    // Get canvas dimensions from parent element
+    const getCanvasSize = () => {
+        const parent = canvasRef.current?.parentElement;
+        if (!parent) return null;
+
+        // Use getBoundingClientRect for precise measurements
+        const rect = parent.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+
+        return {
+            width: Math.floor(rect.width * dpr),
+            height: Math.floor(rect.height * dpr),
+            cssWidth: Math.floor(rect.width),
+            cssHeight: Math.floor(rect.height)
+        };
+    };
 
     // Effect to initialize worker when canvas is ready
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas || hasTransferred.current) return;
 
-        // Create the worker
-        const worker = new CanvasWorker();
-        workerRef.current = worker;
+        const size = getCanvasSize();
+        if (!size || size.width <= 0 || size.height <= 0) {
+            console.error('Invalid canvas dimensions');
+            return;
+        }
 
         try {
+            // Create new worker
+            const worker = new CanvasWorker();
+            workerRef.current = worker;
+
             // Create OffscreenCanvas from the canvas element
-            const offscreenCanvas = canvas.transferControlToOffscreen();
+            const offscreen = canvas.transferControlToOffscreen();
             hasTransferred.current = true;
 
-            // Initialize worker with the offscreen canvas
+            // Initialize worker with the offscreen canvas and initial size
             worker.postMessage(
-                { type: 'init', canvas: offscreenCanvas },
-                [offscreenCanvas]
+                {
+                    type: 'init',
+                    canvas: offscreen,
+                    width: size.width,
+                    height: size.height
+                },
+                [offscreen]
             );
 
             setIsInitialized(true);
         } catch (error) {
             console.error('Failed to transfer canvas control:', error);
-            // Reset state to allow retry
-            hasTransferred.current = false;
-            worker.terminate();
-            workerRef.current = null;
-        }
-
-        // Cleanup on unmount or when canvas changes
-        return () => {
-            if (worker) {
-                worker.terminate();
+            if (workerRef.current) {
+                workerRef.current.terminate();
                 workerRef.current = null;
-                setIsInitialized(false);
             }
             hasTransferred.current = false;
+            setIsInitialized(false);
+        }
+
+        return () => {
+            if (workerRef.current) {
+                workerRef.current.terminate();
+                workerRef.current = null;
+            }
+            hasTransferred.current = false;
+            setIsInitialized(false);
         };
     }, []);
 
@@ -91,48 +118,57 @@ export function PlantCanvas({ plants, className }: PlantCanvasProps) {
         const now = Date.now();
         const ageMs = now - plant.createdAt;
         return ageMs / (1000 * 60 * 60 * 24); // Convert ms to days
-    };
-
-    // Handle resize
+    };    // Handle resize with debounce
     useEffect(() => {
-        const handleResize = () => {
-            if (!canvasRef.current || !isInitialized || !workerRef.current) return;
+        let resizeTimeoutId: number;
+        const debouncedResize = () => {
+            if (resizeTimeoutId) {
+                window.clearTimeout(resizeTimeoutId);
+            }
 
-            // Set canvas size to match display size
-            const canvas = canvasRef.current;
-            const parent = canvas.parentElement;
+            resizeTimeoutId = window.setTimeout(() => {
+                if (!isInitialized || !workerRef.current) return;
 
-            if (parent) {
-                const width = parent.clientWidth;
-                const height = parent.clientHeight;
-
-                canvas.width = width;
-                canvas.height = height;
+                const size = getCanvasSize();
+                if (!size) return;
 
                 // Notify worker of size change
                 workerRef.current.postMessage({
                     type: 'resize',
-                    width,
-                    height
+                    width: size.width,
+                    height: size.height,
+                    cssWidth: size.cssWidth,
+                    cssHeight: size.cssHeight,
                 });
-            }
+            }, 100); // Debounce for 100ms
         };
 
-        // Initial size
-        handleResize();
+        window.addEventListener('resize', debouncedResize);
 
-        // Listen for resize
-        window.addEventListener('resize', handleResize);
+        // Initial size update
+        if (isInitialized && workerRef.current) {
+            debouncedResize();
+        }
 
         return () => {
-            window.removeEventListener('resize', handleResize);
+            window.removeEventListener('resize', debouncedResize);
+            if (resizeTimeoutId) {
+                window.clearTimeout(resizeTimeoutId);
+            }
         };
-    }, [isInitialized]);
+    }, [isInitialized]);// Set initial canvas size using inline styles
+    const canvasStyle = {
+        display: 'block',
+        touchAction: 'none' as const,
+        width: '100%',
+        height: '100%'
+    };
 
     return (
         <canvas
             ref={canvasRef}
-            className={`w-full h-full ${className || ''}`}
+            className={className || ''}
+            style={canvasStyle}
             tabIndex={-1}
             aria-label="Virtual garden with procedurally generated plants"
         />

@@ -4,7 +4,8 @@
 export class FocusManager {
     private static instance: FocusManager;
     private isFocusMode = false;
-    private listeners: ((isFocusMode: boolean) => void)[] = [];
+    private isDebugMode = false;
+    private listeners: ((isFocusMode: boolean, isDebug: boolean) => void)[] = [];
 
     /**
      * Gets singleton instance of FocusManager
@@ -20,6 +21,16 @@ export class FocusManager {
      * Private constructor to force singleton pattern
      */
     private constructor() {
+        // Initialize debug mode from localStorage if available
+        try {
+            const savedDebugMode = localStorage.getItem('debug_mode');
+            if (savedDebugMode) {
+                this.isDebugMode = JSON.parse(savedDebugMode);
+            }
+        } catch (e) {
+            console.warn('Failed to load debug mode state:', e);
+        }
+
         this.setupDetection();
     }
 
@@ -107,17 +118,46 @@ export class FocusManager {
 
     /**
      * Gets current focus mode status
-     * @returns True if in focus mode
+     * @returns True if in focus mode or debug mode is enabled
      */
     isInFocusMode(): boolean {
-        return this.isFocusMode;
+        return this.isFocusMode || this.isDebugMode;
+    }
+
+    /**
+     * Set debug mode
+     * @param enabled Whether debug mode should be enabled
+     */
+    setDebugMode(enabled: boolean): void {
+        const wasInFocusMode = this.isInFocusMode();
+        this.isDebugMode = enabled;
+
+        // Persist debug mode state to localStorage
+        try {
+            localStorage.setItem('debug_mode', JSON.stringify(enabled));
+        } catch (e) {
+            console.warn('Failed to save debug mode state:', e);
+        }
+
+        const isNowInFocusMode = this.isInFocusMode();
+        if (wasInFocusMode !== isNowInFocusMode) {
+            this.notifyListeners();
+        }
+    }
+
+    /**
+     * Get debug mode status
+     * @returns Whether debug mode is enabled
+     */
+    isInDebugMode(): boolean {
+        return this.isDebugMode;
     }
 
     /**
      * Register a listener for focus mode changes
      * @param listener Callback function
      */
-    addListener(listener: (isFocusMode: boolean) => void): void {
+    addListener(listener: (isFocusMode: boolean, isDebug: boolean) => void): void {
         this.listeners.push(listener);
     }
 
@@ -125,7 +165,7 @@ export class FocusManager {
      * Remove a listener
      * @param listener Callback function to remove
      */
-    removeListener(listener: (isFocusMode: boolean) => void): void {
+    removeListener(listener: (isFocusMode: boolean, isDebug: boolean) => void): void {
         this.listeners = this.listeners.filter(l => l !== listener);
     }
 
@@ -134,7 +174,7 @@ export class FocusManager {
      */
     private notifyListeners(): void {
         for (const listener of this.listeners) {
-            listener(this.isFocusMode);
+            listener(this.isFocusMode, this.isDebugMode);
         }
     }
 }

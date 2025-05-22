@@ -5,19 +5,26 @@ import './index.css';
 
 // Register service worker
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/tamaguchigarden/sw.js', {
-      scope: '/tamaguchigarden/'
-    }).then(registration => {
+  window.addEventListener('load', async () => {
+    try {
+      // Get the base URL dynamically
+      const baseUrl = import.meta.env.BASE_URL;
+      const swUrl = `${window.location.origin}${baseUrl}sw.js`;
+
+      const registration = await navigator.serviceWorker.register(swUrl, {
+        scope: baseUrl
+      });
+
       console.log('SW registered:', registration);
 
       // Check for updates periodically
       setInterval(() => {
-        registration.update();
+        registration.update().catch(console.error);
       }, 60 * 60 * 1000); // Check every hour
-    }).catch(error => {
+
+    } catch (error) {
       console.error('SW registration failed:', error);
-    });
+    }
   });
 }
 

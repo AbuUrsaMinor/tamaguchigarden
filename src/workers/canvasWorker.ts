@@ -1,5 +1,5 @@
 import { createNoise2D } from 'simplex-noise';
-import { LSystemGenerator, PlantGenerationSettings } from '../utils/lsystem';
+import { type PlantGenerationSettings, LSystemGenerator } from '../utils/lsystem';
 import { TurtleRenderer } from '../utils/turtleRenderer';
 
 /**
@@ -15,11 +15,18 @@ interface WorkerPlantData {
 /**
  * Message types from main thread to worker
  */
+interface CanvasSize {
+    width: number;
+    height: number;
+    cssWidth?: number;
+    cssHeight?: number;
+}
+
 type WorkerMessage =
-    | { type: 'init'; canvas: OffscreenCanvas }
+    | { type: 'init'; canvas: OffscreenCanvas } & CanvasSize
     | { type: 'updatePlants'; plants: WorkerPlantData[] }
     | { type: 'setVisible'; isVisible: boolean }
-    | { type: 'resize'; width: number; height: number };
+    | { type: 'resize'; } & CanvasSize;
 
 let canvas: OffscreenCanvas | null = null;
 let ctx: OffscreenCanvasRenderingContext2D | null = null;
@@ -35,9 +42,12 @@ const lSystemGenerator = new LSystemGenerator(Date.now());
 /**
  * Initialize the worker with a canvas
  * @param offscreenCanvas The OffscreenCanvas transferred from main thread
+ * @param size The initial canvas size
  */
-function initialize(offscreenCanvas: OffscreenCanvas): void {
+function initialize(offscreenCanvas: OffscreenCanvas, size: CanvasSize): void {
     canvas = offscreenCanvas;
+    canvas.width = size.width;
+    canvas.height = size.height;
 
     // Get 2D context
     ctx = canvas.getContext('2d', { alpha: false }) as OffscreenCanvasRenderingContext2D;
@@ -89,14 +99,20 @@ function setVisible(visible: boolean): void {
  * @param width New width
  * @param height New height
  */
-function handleResize(width: number, height: number): void {
-    if (!canvas) return;
+function handleResize({ width, height }: CanvasSize): void {
+    if (!canvas || !ctx) return;
 
+    // Update canvas resolution while maintaining visual size
     canvas.width = width;
     canvas.height = height;
 
     // Clear the turtle renderer's path cache since we need to regenerate for new size
     turtleRenderer.clearMemoizedPaths();
+
+    // Force a redraw immediately
+    if (isVisible) {
+        renderFrame(performance.now(), 0);
+    }
 }
 
 /**
@@ -178,7 +194,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>): void => {
 
     switch (message.type) {
         case 'init':
-            initialize(message.canvas);
+            initialize(message.canvas, message);
             break;
 
         case 'updatePlants':
@@ -190,7 +206,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>): void => {
             break;
 
         case 'resize':
-            handleResize(message.width, message.height);
+            handleResize(message);
             break;
     }
 };
