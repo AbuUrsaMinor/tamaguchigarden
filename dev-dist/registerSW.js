@@ -1,1 +1,0 @@
-if('serviceWorker' in navigator) navigator.serviceWorker.register('/tamaguchigarden/dev-sw.js?dev-sw', { scope: '/tamaguchigarden/', type: 'classic' })
