@@ -6,9 +6,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 // https://vite.dev/config/
 export default defineConfig({
   base: '/tamaguchigarden/', // Set base for GitHub Pages deployment
+  worker: {
+    format: 'es', // Use ES modules for workers
+  },
   plugins: [
     react(),
-    tailwindcss(), VitePWA({
+    tailwindcss(), 
+    VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['vite.svg'],
       manifest: {
