@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Register service worker
+// Temporarily disable service worker registration during development
+// Comment out service worker registration to avoid errors
+/*
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
@@ -27,6 +29,9 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
+*/
+
+console.log('Service worker registration disabled for development.');
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

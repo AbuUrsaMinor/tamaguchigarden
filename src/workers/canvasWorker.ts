@@ -24,6 +24,7 @@ interface CanvasSize {
 
 type WorkerMessage =
     | { type: 'init'; canvas: OffscreenCanvas } & CanvasSize
+    | { type: 'initWithoutTransfer' } & CanvasSize
     | { type: 'updatePlants'; plants: WorkerPlantData[] }
     | { type: 'setVisible'; isVisible: boolean }
     | { type: 'resize'; } & CanvasSize;
@@ -33,11 +34,15 @@ let ctx: OffscreenCanvasRenderingContext2D | null = null;
 let plants: WorkerPlantData[] = [];
 let isVisible = true;
 let animationFrameId: number | null = null;
+let canvasSize: CanvasSize | null = null;
 
 // Initialize noise generator with a random seed
 const simplex = createNoise2D();
 const turtleRenderer = new TurtleRenderer();
 const lSystemGenerator = new LSystemGenerator(Date.now());
+
+// Use a flag to track if we're using direct canvas or message-based drawing
+let useDirectCanvas = true;
 
 /**
  * Initialize the worker with a canvas
@@ -197,6 +202,28 @@ self.onmessage = (event: MessageEvent<WorkerMessage>): void => {
             initialize(message.canvas, message);
             break;
 
+        case 'initWithoutTransfer':
+            // Fallback initialization without OffscreenCanvas
+            useDirectCanvas = false;
+            canvasSize = {
+                width: message.width,
+                height: message.height,
+                cssWidth: message.cssWidth,
+                cssHeight: message.cssHeight
+            };
+
+            // Create a virtual canvas context for calculations
+            canvas = new OffscreenCanvas(message.width, message.height);
+            ctx = canvas.getContext('2d', { alpha: true });
+
+            if (ctx) {
+                initializeCanvas();
+                startRenderLoop();
+            } else {
+                console.error('Failed to get 2D context from fallback canvas');
+            }
+            break;
+
         case 'updatePlants':
             updatePlants(message.plants);
             break;
@@ -210,3 +237,74 @@ self.onmessage = (event: MessageEvent<WorkerMessage>): void => {
             break;
     }
 };
+
+// Initialize canvas settings
+function initializeCanvas() {
+    if (!ctx) return;
+
+    // Set initial canvas settings
+    ctx.fillStyle = '#242424';
+    ctx.fillRect(0, 0, canvasSize?.width || 0, canvasSize?.height || 0);
+}
+
+// Start the render loop
+function startRenderLoop() {
+    if (!isVisible || animationFrameId !== null) return;
+
+    const frame = () => {
+        render();
+        animationFrameId = requestAnimationFrame(frame);
+    };
+
+    animationFrameId = requestAnimationFrame(frame);
+}
+
+// Stop the render loop
+function stopRenderLoop() {
+    if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
+}
+
+// Main render function
+function render() {
+    if (!ctx || !canvas || !canvasSize) return;
+
+    // Clear canvas
+    ctx.fillStyle = '#242424';
+    ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+
+    // Render all plants
+    for (const plant of plants) {
+        renderPlant(plant);
+    }
+
+    // If we're not using direct canvas, send the drawing data back to the main thread
+    if (!useDirectCanvas) {
+        const imageData = canvas.transferToImageBitmap();
+        self.postMessage({
+            type: 'drawCommands',
+            image: imageData
+        }, [imageData]);
+    }
+}
+
+// Render a single plant
+function renderPlant(plant: WorkerPlantData) {
+    if (!ctx || !canvas || !canvasSize) return;
+
+    // Set up the L-system for this plant
+    lSystemGenerator.setSeed(plant.seed);
+    const rules = lSystemGenerator.generatePlantRules(plant.settings);
+    const iterations = Math.min(5, Math.max(1, Math.floor(plant.ageInDays / 3) + 1));
+    const lSystem = lSystemGenerator.generateFromRules(rules, iterations);
+
+    // Calculate plant position based on its ID for deterministic placement
+    const xPos = ((plant.id * 123) % 100) / 100 * canvasSize.width;
+    const yPos = canvasSize.height * 0.8; // Place plants near the bottom
+
+    // Set up turtle renderer
+    turtleRenderer.setContext(ctx);
+    turtleRenderer.render(lSystem, xPos, yPos, plant.ageInDays);
+}

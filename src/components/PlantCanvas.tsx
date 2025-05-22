@@ -1,22 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { PlantData } from '../utils/storage';
 import { useInView } from './useInView';
 
-// Import worker as a URL
+// Temporarily disable worker import
 // @ts-ignore - Vite will handle this correctly
-import CanvasWorker from '../workers/canvasWorker.ts?worker';
+// import CanvasWorker from '../workers/canvasWorker.ts?worker';
 
 interface PlantCanvasProps {
     plants: PlantData[];
     className?: string;
 }
 
+// Simple fallback rendering with direct canvas
 export function PlantCanvas({ plants, className }: PlantCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const workerRef = useRef<Worker | null>(null);
-    const [isInitialized, setIsInitialized] = useState(false);
-    const isInView = useInView(canvasRef);
-    const hasTransferred = useRef(false);    // Get canvas dimensions from parent element
+    // Cast the ref to make TypeScript happy
+    const isInView = useInView(canvasRef as React.RefObject<Element>);
+
+    // Get canvas dimensions from parent element
     const getCanvasSize = () => {
         const parent = canvasRef.current?.parentElement;
         if (!parent) return null;
@@ -33,10 +34,12 @@ export function PlantCanvas({ plants, className }: PlantCanvasProps) {
         };
     };
 
-    // Effect to initialize worker when canvas is ready
+    // Effect to initialize canvas when ready and re-render when visibility changes
     useEffect(() => {
+        if (!isInView) return;
+
         const canvas = canvasRef.current;
-        if (!canvas || hasTransferred.current) return;
+        if (!canvas) return;
 
         const size = getCanvasSize();
         if (!size || size.width <= 0 || size.height <= 0) {
@@ -44,133 +47,98 @@ export function PlantCanvas({ plants, className }: PlantCanvasProps) {
             return;
         }
 
-        try {
-            // Create new worker
-            const worker = new CanvasWorker();
-            workerRef.current = worker;
+        // Set canvas size
+        canvas.width = size.width;
+        canvas.height = size.height;
 
-            // Create OffscreenCanvas from the canvas element
-            const offscreen = canvas.transferControlToOffscreen();
-            hasTransferred.current = true;
-
-            // Initialize worker with the offscreen canvas and initial size
-            worker.postMessage(
-                {
-                    type: 'init',
-                    canvas: offscreen,
-                    width: size.width,
-                    height: size.height
-                },
-                [offscreen]
-            );
-
-            setIsInitialized(true);
-        } catch (error) {
-            console.error('Failed to transfer canvas control:', error);
-            if (workerRef.current) {
-                workerRef.current.terminate();
-                workerRef.current = null;
-            }
-            hasTransferred.current = false;
-            setIsInitialized(false);
+        // Initialize 2D context
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            console.error('Failed to get 2D context');
+            return;
         }
 
-        return () => {
-            if (workerRef.current) {
-                workerRef.current.terminate();
-                workerRef.current = null;
-            }
-            hasTransferred.current = false;
-            setIsInitialized(false);
-        };
-    }, []);
+        // Draw a placeholder background
+        ctx.fillStyle = '#87CEEB';  // Sky blue
+        ctx.fillRect(0, 0, size.width, size.height);
 
-    // Effect to update plants in worker
-    useEffect(() => {
-        if (!isInitialized || !workerRef.current) return;
+        // Draw a simple ground
+        ctx.fillStyle = '#8FBC8F';  // Dark sea green
+        ctx.fillRect(0, size.height * 0.7, size.width, size.height * 0.3);
 
-        // Convert PlantData to worker format
-        const workerPlants = plants.map(plant => ({
-            id: plant.id!,
-            seed: plant.seed,
-            ageInDays: calculateAgeInDays(plant)
-        }));
+        // Draw a simple placeholder for each plant
+        plants.forEach((plant, index) => {
+            const x = (index % 3 + 0.5) * size.width / 3;
+            const y = size.height * 0.7;
 
-        // Send plants to worker
-        workerRef.current.postMessage({
-            type: 'updatePlants',
-            plants: workerPlants
+            // Use the plant's seed to determine color
+            const hue = (plant.seed % 360);
+            ctx.fillStyle = `hsl(${hue}, 80%, 40%)`;
+
+            // Draw a simple "plant" - a rectangle for stem
+            ctx.fillRect(x - 5, y - 100, 10, 100);
+
+            // Draw a circle for the "flower"
+            ctx.beginPath();
+            ctx.arc(x, y - 120, 20, 0, Math.PI * 2);
+            ctx.fill();
         });
-    }, [plants, isInitialized]);
 
-    // Effect to update visibility
+    }, [plants, isInView]);
+
+    // Effect to handle resize
     useEffect(() => {
-        if (!isInitialized || !workerRef.current) return;
+        const handleResize = () => {
+            if (!isInView) return;
 
-        workerRef.current.postMessage({
-            type: 'setVisible',
-            isVisible: isInView
-        });
-    }, [isInView, isInitialized]);
+            const canvas = canvasRef.current;
+            if (!canvas) return;
 
-    // Calculate plant age in days
-    const calculateAgeInDays = (plant: PlantData): number => {
-        const now = Date.now();
-        const ageMs = now - plant.createdAt;
-        return ageMs / (1000 * 60 * 60 * 24); // Convert ms to days
-    };    // Handle resize with debounce
-    useEffect(() => {
-        let resizeTimeoutId: number;
-        const debouncedResize = () => {
-            if (resizeTimeoutId) {
-                window.clearTimeout(resizeTimeoutId);
-            }
+            const size = getCanvasSize();
+            if (!size) return;
 
-            resizeTimeoutId = window.setTimeout(() => {
-                if (!isInitialized || !workerRef.current) return;
+            // Update canvas size
+            canvas.width = size.width;
+            canvas.height = size.height;
 
-                const size = getCanvasSize();
-                if (!size) return;
+            // Force redraw
+            // Re-render with current plants
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
 
-                // Notify worker of size change
-                workerRef.current.postMessage({
-                    type: 'resize',
-                    width: size.width,
-                    height: size.height,
-                    cssWidth: size.cssWidth,
-                    cssHeight: size.cssHeight,
-                });
-            }, 100); // Debounce for 100ms
+            // Draw background
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, size.width, size.height);
+
+            // Draw ground
+            ctx.fillStyle = '#8FBC8F';
+            ctx.fillRect(0, size.height * 0.7, size.width, size.height * 0.3);
+
+            // Draw plants
+            plants.forEach((plant, index) => {
+                const x = (index % 3 + 0.5) * size.width / 3;
+                const y = size.height * 0.7;
+
+                const hue = (plant.seed % 360);
+                ctx.fillStyle = `hsl(${hue}, 80%, 40%)`;
+
+                ctx.fillRect(x - 5, y - 100, 10, 100);
+
+                ctx.beginPath();
+                ctx.arc(x, y - 120, 20, 0, Math.PI * 2);
+                ctx.fill();
+            });
         };
 
-        window.addEventListener('resize', debouncedResize);
-
-        // Initial size update
-        if (isInitialized && workerRef.current) {
-            debouncedResize();
-        }
-
-        return () => {
-            window.removeEventListener('resize', debouncedResize);
-            if (resizeTimeoutId) {
-                window.clearTimeout(resizeTimeoutId);
-            }
-        };
-    }, [isInitialized]);// Set initial canvas size using inline styles
-    const canvasStyle = {
-        display: 'block',
-        touchAction: 'none' as const,
-        width: '100%',
-        height: '100%'
-    };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [plants, isInView]);
 
     return (
         <canvas
             ref={canvasRef}
-            className={className || ''}
-            style={canvasStyle}
-            tabIndex={-1}
-            aria-label="Virtual garden with procedurally generated plants"
+            className={className}
+            style={{ width: '100%', height: '100%' }}
         />
     );
 }
